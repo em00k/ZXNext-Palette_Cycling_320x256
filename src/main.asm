@@ -14,7 +14,7 @@
         org     $8000
 
 main:
-
+        di 
         ; set up hardware 
         nextreg TURBO_CONTROL_NR_07,3                   ; 28mhz
         nextreg GLOBAL_TRANSPARENCY_NR_14,0             ; black 
@@ -32,6 +32,8 @@ main:
         out     ($fe), a                        ; black border 
 
         ld      ix, testmap                     ; point to test map data 
+        ld      iy, (32*256)+24                 ; width = 32, height = 24
+        
         call    draw_map                        ; draw the map 
 
         jr   $                                  ; repeat loop 

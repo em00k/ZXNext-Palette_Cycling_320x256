@@ -41,15 +41,21 @@ clsL2:
 
 draw_map:
 
-	; draws 768 tiles from 0,0 to fille the screen 
+	; draws nn tiles from x,y to fille the screen 
 	; IN IX > map to draw 
+	; IN IY > width x height 
 
 	ld          a, 0            ; black 
 	call        clsL2           ; clear L2 
 
+	ld 			d, iyh 			; width 
+	ld 			e, iyl			; height 
+	mul 		d, e 	
+	ld 			b, d 
+	ld 			c, e 			; number of tiles to draw  			
+
 	ld          de,$00'00           ; d = x  e = y 
 
-	ld          bc, 768         ; number of tiles to draw 
 
 .maploop:       ; lets draw 768 tiles 
 	 
@@ -62,7 +68,8 @@ draw_map:
 	inc         ix              ; move to next tile 
 	inc         d               ; X + 1 
 	ld          a, d 
-	cp          32              ; is X =32 
+	cp          iyh              ; is X = width?
+
 	jr          nz, .no_inc_e   ; no, then skip to .no_inc_e
 
 	inc         e               ; X=32 so make Y+1
