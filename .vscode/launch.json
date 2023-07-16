@@ -18,7 +18,7 @@
             },
             "sjasmplus": [
                 {
-                    "path": "L2_on_SLOT01.sld"
+                    "path": "320Cycle.sld"
                 }
             ],
             "history": {
@@ -37,7 +37,7 @@
             },
             "rootFolder": "${workspaceFolder}",
             "topOfStack": "stack_top",
-            "load": "L2_on_SLOT01.nex",
+            "load": "320Cycle.nex",
             "smallValuesMaximum": 513,
             "tmpDir": ".tmp"
         },
@@ -50,7 +50,7 @@
             "remoteType": "cspect",     
             "sjasmplus": [
                 {
-                    "path": "L2_on_SLOT01.sld"
+                    "path": "320Cycle.sld"
                 }
             ], 
             "history": {
@@ -81,7 +81,7 @@
             "disassemblerArgs": {
                 "esxdosRst": true
             },
-            "load": "L2_on_SLOT01.nex",
+            "load": "320Cycle.nex",
             "skipInterrupt": false,
             "smallValuesMaximum": 513,
             "tmpDir": ".tmp"
