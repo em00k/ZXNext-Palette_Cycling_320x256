@@ -370,11 +370,11 @@
  27   801D ED 91 12 09          nextreg LAYER2_RAM_BANK_NR_12,9                 ; layer2 rams   16kb banks so 9*2 = BANKS 18
  28   8021 ED 91 69 80  	nextreg DISPLAY_CONTROL_NR_69,%10000000
  29   8025
- 30   8025 CD 4B 81             call    set_clipping                            ; clip L2 to 320x256 and ULA to 0x0
+ 30   8025 CD 62 81             call    set_clipping                            ; clip L2 to 320x256 and ULA to 0x0
  31   8028
  32   8028 ED 91 43 10          nextreg PALETTE_CONTROL_NR_43,%00010000		; set L2 palette
  33   802C 3E C8                ld      a, 200                                   ; lower value will use more colours form the palette
- 34   802E CD 6C 81             call    gen_palette                             ; generate palette
+ 34   802E CD 83 81             call    gen_palette                             ; generate palette
  35   8031
  36   8031 AF                   xor     a
  37   8032 D3 FE                out     ($fe), a                                ; black border
@@ -382,9 +382,8 @@
  39   8034
  40   8034              main_loop:
  41   8034
-src/main.asm(42): error: Label not found: Vsync
- 42   8034 CD 00 00             call    Vsync                                   ; wait for vsync
- 43   8037 CD A8 81             call    pal_cycle                               ; cycle colours
+ 42   8034 CD 11 81             call    Vsync                                   ; wait for vsync
+ 43   8037 CD BF 81             call    pal_cycle                               ; cycle colours
  44   803A
  45   803A 18 F8                jr      main_loop                               ; repeat loop
  46   803C
@@ -419,155 +418,174 @@ src/main.asm(42): error: Label not found: Vsync
  15+  810F C1               pop     bc
  16+  8110 C9               ret
  17+  8111
+ 18+  8111
+ 19+  8111
+ 20+  8111              ; Vsync wait
+ 21+  8111
+ 22+  8111              Vsync:
+ 23+  8111 21 01 00                 ld      hl, 1
+ 24+  8114              .readline:
+ 25+  8114 3E 1F        			ld 		a,VIDEO_LINE_LSB_NR_1F
+ 26+  8116 01 3B 24     			ld 		bc,TBBLUE_REGISTER_SELECT_P_243B
+ 27+  8119 ED 79        			out 	(c),a
+ 28+  811B 04           			inc 	b
+ 29+  811C ED 78        			in 		a,(c)
+ 30+  811E FE C0        			cp 		192				; line to wait for
+ 31+  8120 20 F2        			jr 		nz,.readline
+ 32+  8122 2B           			dec 	hl
+ 33+  8123 7C           			ld 		a,h
+ 34+  8124 B5           			or 		l
+ 35+  8125 20 ED        			jr 		nz,.readline
+ 36+  8127 C9                       ret
 # file closed: src/utils.asm
- 60   8111                      include "layer2.asm"
+ 60   8128                      include "layer2.asm"
 # file opened: src/layer2.asm
-  1+  8111              clsL2:
-  2+  8111              	; Clears L2 320x256 with A as colour
-  3+  8111              	; IN A > colour
-  4+  8111              	; USES : hl, de, bc, a
-  5+  8111
-  6+  8111 32 2C 81     		ld          (.colour+1), a
-  7+  8114 3E 12        		ld          a, $12 				; $12 is L2 RAM start bank register
-  8+  8116 CD 06 81     		call        getRegister 		; get L2 ram bank in a
-  9+  8119 87           		add         a, a                ; A = start of L2 ram, we need to *2
- 10+  811A 06 05        		ld          b, 5                ; 3 blocks to do
- 11+  811C
- 12+  811C              .L2loop:
- 13+  811C C5           		push        bc 					; save loop counter
- 14+  811D
- 15+  811D ED 92 50     		nextreg     MMU0_0000_NR_50, a  ; set 0 - $1fff
- 16+  8120 3C           		inc         a
- 17+  8121 ED 92 51     		nextreg     MMU1_2000_NR_51, a  ; set 0 - $1fff
- 18+  8124 3C           		inc         a
- 19+  8125
- 20+  8125 21 00 00     		ld          hl, 0 				; start at address 0
- 21+  8128 11 01 00     		ld          de, 1
- 22+  812B              .colour:
- 23+  812B 36 14        		ld          (hl), 20            ; smc colour from above
- 24+  812D 01 FF 3F     		ld          bc, $3fff			; bytes to clear
- 25+  8130 ED B0        		ldir
- 26+  8132 C1           		pop         bc 					; bring back loop counter
- 27+  8133 10 E7        		djnz        .L2loop 			; repeat until b = 0
- 28+  8135
- 29+  8135              		; restore ROMS
- 30+  8135
- 31+  8135 ED 91 50 FF  		nextreg     MMU0_0000_NR_50, $ff
- 32+  8139 ED 91 51 FF  		nextreg     MMU1_2000_NR_51, $ff
- 33+  813D
- 34+  813D              		; clear ULA
- 35+  813D 21 00 40     		ld          hl, 16384
- 36+  8140 11 01 40     		ld          de, 16385
- 37+  8143 01 00 1B     		ld          bc, 6912
- 38+  8146 36 00        		ld          (hl), 0
- 39+  8148 ED B0        		ldir
- 40+  814A
- 41+  814A C9           		ret
- 42+  814B
- 43+  814B
- 44+  814B              set_clipping:
- 45+  814B
- 46+  814B              	; clips ULA to 0,0
- 47+  814B
- 48+  814B ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
- 49+  814F ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
- 50+  8153 ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
- 51+  8157 ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
- 52+  815B
- 53+  815B
- 54+  815B ED 91 18 00  		nextreg		CLIP_LAYER2_NR_18, 0
- 55+  815F ED 91 18 FF  		nextreg		CLIP_LAYER2_NR_18, 255
- 56+  8163 ED 91 18 00  		nextreg		CLIP_LAYER2_NR_18, 0
- 57+  8167 ED 91 18 FF  		nextreg		CLIP_LAYER2_NR_18, 255
- 58+  816B
- 59+  816B
- 60+  816B C9           		ret
- 61+  816C
- 62+  816C
- 63+  816C              gen_palette:
- 64+  816C
- 65+  816C              		; A > offset
- 66+  816C
- 67+  816C ED 91 52 1C  		nextreg 		$52,28 								; bring in palette to $4000
- 68+  8170 21 00 40     		ld      		hl, $4000							; point hl to start of palette
- 69+  8173 ED 31        		add     		hl, a								; hl = @palette+offset
- 70+  8175 11 D5 81     		ld      		de, palette_buffer					; point de to palette
- 71+  8178 01 00 02     		ld      		bc, 512								;
- 72+  817B              .uploop1:
- 73+  817B ED A0        		ldi 												; copy offset to de
- 74+  817D 23           		inc 			hl 									; move to next colour
- 75+  817E 78           		ld      		a, b 								; have we done 512 loops?
- 76+  817F B1           		or      		c
- 77+  8180 20 F9        		jr      		nz,.uploop1							; no then jump to uploop1
- 78+  8182 21 D5 81     		ld      		hl,palette_buffer					; point hl to palette_buffer
- 79+  8185 06 00        		ld      		b,0									; 256 loops
- 80+  8187 ED 91 43 11  		nextreg 		PALETTE_CONTROL_NR_43, %00010001	; ensure L2 palette is selected
- 81+  818B ED 91 40 00  		nextreg 		$40,0 								; move to index 0
- 82+  818F              .uploop:
- 83+  818F 7E           		ld      		a,(hl)								; get colour
- 84+  8190 ED 92 44     		nextreg 		$44, a  							; set colout
- 85+  8193 23           		inc     		hl 									; move to RGB9 Blue bit but ignore
- 86+  8194 ED 91 44 00  		nextreg 		$44, 0								; 332 RGB mode so set extra bit to 0
- 87+  8198 23           		inc     		hl 									; move to next colour
- 88+  8199 10 F4        		djnz    		.uploop								; repeat
- 89+  819B ED 91 44 00  		nextreg			$44,0								; set first colour to 0
- 90+  819F ED 91 44 00  		nextreg			$44,0
- 91+  81A3
- 92+  81A3 ED 91 52 02  		nextreg 		$52,2								; bring back bank 2 to $4000
- 93+  81A7 C9           		ret
- 94+  81A8
- 95+  81A8
- 96+  81A8              pal_cycle:
- 97+  81A8
- 98+  81A8              	; cycles the colours from hl
- 99+  81A8
-100+  81A8 21 D5 81     		ld			hl,palette_buffer
-101+  81AB 06 1F        		ld 			b,31									; number of colours to cycle?
-102+  81AD
-103+  81AD 3E 00        		ld 			a,0										; offset into colour index
-104+  81AF
-105+  81AF              .loadpal:
-106+  81AF
-107+  81AF 11 D5 81     		ld 			de,palette_buffer						; set de to palette
-108+  81B2
-109+  81B2 1A           		ld 			a,(de)									; get the first colour
-110+  81B3 F5           		push 		af 										; save the value
-111+  81B4 21 D6 81     		ld 			hl,palette_buffer+1						; copy palette+1 back 1 space
-112+  81B7 11 D5 81     		ld 			de,palette_buffer
-113+  81BA 01 FE 00     		ld 			bc,254									; do for 255 colours
-114+  81BD ED B0        		ldir 												;
-115+  81BF F1           		pop 		af 										; bring back fist colour
-116+  81C0 12           		ld 			(de),a 									; place at end
-117+  81C1 21 D5 81     		ld 			hl,palette_buffer								; point hl to updated palette
-118+  81C4
-119+  81C4 06 FF        		ld 			b,255									; 255 loops
-120+  81C6 AF           		xor 		a										; flatten a
-121+  81C7              .palloop:
-122+  81C7
-123+  81C7 ED 92 40     		nextreg 	PALETTE_INDEX_NR_40,a					; move palette index to a
-124+  81CA 57           		ld 			d,a 									; save a in d
-125+  81CB 7E           		ld 			a,(hl)									; load first value, send to NextReg
-126+  81CC ED 92 41     		nextreg 	$41,a 									; set the colour
-127+  81CF 23           		inc 		hl 										; increase palette location
-128+  81D0 7A           		ld 			a,d 									; bring back palette index
-129+  81D1 3C           		inc 		a 										; incread palette index
-130+  81D2 10 F3        		djnz 		.palloop								; loop until all colours done
-131+  81D4 C9           		ret
+  1+  8128              clsL2:
+  2+  8128              	; Clears L2 320x256 with A as colour
+  3+  8128              	; IN A > colour
+  4+  8128              	; USES : hl, de, bc, a
+  5+  8128
+  6+  8128 32 43 81     		ld          (.colour+1), a
+  7+  812B 3E 12        		ld          a, $12 				; $12 is L2 RAM start bank register
+  8+  812D CD 06 81     		call        getRegister 		; get L2 ram bank in a
+  9+  8130 87           		add         a, a                ; A = start of L2 ram, we need to *2
+ 10+  8131 06 05        		ld          b, 5                ; 3 blocks to do
+ 11+  8133
+ 12+  8133              .L2loop:
+ 13+  8133 C5           		push        bc 					; save loop counter
+ 14+  8134
+ 15+  8134 ED 92 50     		nextreg     MMU0_0000_NR_50, a  ; set 0 - $1fff
+ 16+  8137 3C           		inc         a
+ 17+  8138 ED 92 51     		nextreg     MMU1_2000_NR_51, a  ; set 0 - $1fff
+ 18+  813B 3C           		inc         a
+ 19+  813C
+ 20+  813C 21 00 00     		ld          hl, 0 				; start at address 0
+ 21+  813F 11 01 00     		ld          de, 1
+ 22+  8142              .colour:
+ 23+  8142 36 14        		ld          (hl), 20            ; smc colour from above
+ 24+  8144 01 FF 3F     		ld          bc, $3fff			; bytes to clear
+ 25+  8147 ED B0        		ldir
+ 26+  8149 C1           		pop         bc 					; bring back loop counter
+ 27+  814A 10 E7        		djnz        .L2loop 			; repeat until b = 0
+ 28+  814C
+ 29+  814C              		; restore ROMS
+ 30+  814C
+ 31+  814C ED 91 50 FF  		nextreg     MMU0_0000_NR_50, $ff
+ 32+  8150 ED 91 51 FF  		nextreg     MMU1_2000_NR_51, $ff
+ 33+  8154
+ 34+  8154              		; clear ULA
+ 35+  8154 21 00 40     		ld          hl, 16384
+ 36+  8157 11 01 40     		ld          de, 16385
+ 37+  815A 01 00 1B     		ld          bc, 6912
+ 38+  815D 36 00        		ld          (hl), 0
+ 39+  815F ED B0        		ldir
+ 40+  8161
+ 41+  8161 C9           		ret
+ 42+  8162
+ 43+  8162
+ 44+  8162              set_clipping:
+ 45+  8162
+ 46+  8162              	; clips ULA to 0,0
+ 47+  8162
+ 48+  8162 ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+ 49+  8166 ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+ 50+  816A ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+ 51+  816E ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+ 52+  8172
+ 53+  8172
+ 54+  8172 ED 91 18 00  		nextreg		CLIP_LAYER2_NR_18, 0
+ 55+  8176 ED 91 18 FF  		nextreg		CLIP_LAYER2_NR_18, 255
+ 56+  817A ED 91 18 00  		nextreg		CLIP_LAYER2_NR_18, 0
+ 57+  817E ED 91 18 FF  		nextreg		CLIP_LAYER2_NR_18, 255
+ 58+  8182
+ 59+  8182
+ 60+  8182 C9           		ret
+ 61+  8183
+ 62+  8183
+ 63+  8183              gen_palette:
+ 64+  8183
+ 65+  8183              		; A > offset
+ 66+  8183
+ 67+  8183 ED 91 52 1C  		nextreg 		$52,28 								; bring in palette to $4000
+ 68+  8187 21 00 40     		ld      		hl, $4000							; point hl to start of palette
+ 69+  818A ED 31        		add     		hl, a								; hl = @palette+offset
+ 70+  818C 11 EC 81     		ld      		de, palette_buffer					; point de to palette
+ 71+  818F 01 00 02     		ld      		bc, 512								;
+ 72+  8192              .uploop1:
+ 73+  8192 ED A0        		ldi 												; copy offset to de
+ 74+  8194 23           		inc 			hl 									; move to next colour
+ 75+  8195 78           		ld      		a, b 								; have we done 512 loops?
+ 76+  8196 B1           		or      		c
+ 77+  8197 20 F9        		jr      		nz,.uploop1							; no then jump to uploop1
+ 78+  8199 21 EC 81     		ld      		hl,palette_buffer					; point hl to palette_buffer
+ 79+  819C 06 00        		ld      		b,0									; 256 loops
+ 80+  819E ED 91 43 11  		nextreg 		PALETTE_CONTROL_NR_43, %00010001	; ensure L2 palette is selected
+ 81+  81A2 ED 91 40 00  		nextreg 		$40,0 								; move to index 0
+ 82+  81A6              .uploop:
+ 83+  81A6 7E           		ld      		a,(hl)								; get colour
+ 84+  81A7 ED 92 44     		nextreg 		$44, a  							; set colout
+ 85+  81AA 23           		inc     		hl 									; move to RGB9 Blue bit but ignore
+ 86+  81AB ED 91 44 00  		nextreg 		$44, 0								; 332 RGB mode so set extra bit to 0
+ 87+  81AF 23           		inc     		hl 									; move to next colour
+ 88+  81B0 10 F4        		djnz    		.uploop								; repeat
+ 89+  81B2 ED 91 44 00  		nextreg			$44,0								; set first colour to 0
+ 90+  81B6 ED 91 44 00  		nextreg			$44,0
+ 91+  81BA
+ 92+  81BA ED 91 52 02  		nextreg 		$52,2								; bring back bank 2 to $4000
+ 93+  81BE C9           		ret
+ 94+  81BF
+ 95+  81BF
+ 96+  81BF              pal_cycle:
+ 97+  81BF
+ 98+  81BF              	; cycles the colours from hl
+ 99+  81BF
+100+  81BF 21 EC 81     		ld			hl,palette_buffer
+101+  81C2 06 1F        		ld 			b,31									; number of colours to cycle?
+102+  81C4
+103+  81C4 3E 00        		ld 			a,0										; offset into colour index
+104+  81C6
+105+  81C6              .loadpal:
+106+  81C6
+107+  81C6 11 EC 81     		ld 			de,palette_buffer						; set de to palette
+108+  81C9
+109+  81C9 1A           		ld 			a,(de)									; get the first colour
+110+  81CA F5           		push 		af 										; save the value
+111+  81CB 21 ED 81     		ld 			hl,palette_buffer+1						; copy palette+1 back 1 space
+112+  81CE 11 EC 81     		ld 			de,palette_buffer
+113+  81D1 01 FE 00     		ld 			bc,254									; do for 255 colours
+114+  81D4 ED B0        		ldir 												;
+115+  81D6 F1           		pop 		af 										; bring back fist colour
+116+  81D7 12           		ld 			(de),a 									; place at end
+117+  81D8 21 EC 81     		ld 			hl,palette_buffer								; point hl to updated palette
+118+  81DB
+119+  81DB 06 FF        		ld 			b,255									; 255 loops
+120+  81DD AF           		xor 		a										; flatten a
+121+  81DE              .palloop:
+122+  81DE
+123+  81DE ED 92 40     		nextreg 	PALETTE_INDEX_NR_40,a					; move palette index to a
+124+  81E1 57           		ld 			d,a 									; save a in d
+125+  81E2 7E           		ld 			a,(hl)									; load first value, send to NextReg
+126+  81E3 ED 92 41     		nextreg 	$41,a 									; set the colour
+127+  81E6 23           		inc 		hl 										; increase palette location
+128+  81E7 7A           		ld 			a,d 									; bring back palette index
+129+  81E8 3C           		inc 		a 										; incread palette index
+130+  81E9 10 F3        		djnz 		.palloop								; loop until all colours done
+131+  81EB C9           		ret
 # file closed: src/layer2.asm
- 61   81D5
- 62   81D5                      outend
- 63   81D5
- 64   81D5              ;------------------------------------------------------------------------------
- 65   81D5              ; Data section
- 66   81D5
- 67   81D5              palette_buffer:                                         ; used to cache palette for cycling
- 68   81D5 00 00 00...          defs    512,0
- 69   83D5
- 70   83D5              ;------------------------------------------------------------------------------
- 71   83D5              ; Memory banks
- 72   83D5
- 73   83D5                      mmu 7   n, 18                                   ; load to bank 18 which is the start of L2 memory
- 74   83D5                      org     $e000
+ 61   81EC
+ 62   81EC                      outend
+ 63   81EC
+ 64   81EC              ;------------------------------------------------------------------------------
+ 65   81EC              ; Data section
+ 66   81EC
+ 67   81EC              palette_buffer:                                         ; used to cache palette for cycling
+ 68   81EC 00 00 00...          defs    512,0
+ 69   83EC
+ 70   83EC              ;------------------------------------------------------------------------------
+ 71   83EC              ; Memory banks
+ 72   83EC
+ 73   83EC                      mmu 7   n, 18                                   ; load to bank 18 which is the start of L2 memory
+ 74   83EC                      org     $e000
  75   E000                      incbin  "../assets/output320.bin"               ; precalculated image
  76   E000                      mmu 7   n, 28
  77   E000                      org     $e000
