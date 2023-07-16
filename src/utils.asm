@@ -16,27 +16,6 @@ getRegister:
     ret 
 
 
-;----------------------------------------------------------------------------
-;
-; Jump index
-;
-; In:
-;	A = Pointer index
-;    (SP) = Pointer to jump addresses list
-;
-;----------------------------------------------------------------------------
-
-JumpIndex:
-		    pop	    hl				    ; Pointer to list
-
-            add     a,  a
-            add     hl, a 
-		    ld	    e, (hl)
-		    inc	    hl
-		    ld	    d, (hl)			    ; DE = Address to jump
-		    ex	    de,	hl
-		    jp	    (hl)
-
 
 ; Vsync wait 
 
