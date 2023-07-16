@@ -1,16 +1,15 @@
 # file opened: src/main.asm
-  1   0000              ; this example demonstrates how you can have your souce data eg. bitmap tiles in slot 0 $0000 and also write to L2
-  2   0000              ; in the same memory location.
-  3   0000
-  4   0000              ; em00k 16/07/23
+  1   0000              ; this example demonstrates palette cycling on a precalculated 320x256 image
+  2   0000
+  3   0000              ; em00k 16/07/23
+  4   0000
   5   0000
   6   0000
-  7   0000
-  8   0000                      SLDOPT COMMENT WPMEM, LOGPOINT, ASSERTION
-  9   0000                      DEVICE ZXSPECTRUMNEXT
- 10   0000                      CSPECTMAP "L2_on_SLOT01.map"
- 11   0000
- 12   0000                      include "hardware.inc"                          ; hardware equates
+  7   0000                      SLDOPT COMMENT WPMEM, LOGPOINT, ASSERTION
+  8   0000                      DEVICE ZXSPECTRUMNEXT
+  9   0000                      CSPECTMAP "320Cycle.map"
+ 10   0000
+ 11   0000                      include "hardware.inc"                          ; hardware equates
 # file opened: src/hardware.inc
   1+  0000              BIT_UP			equ 4	; 16
   2+  0000              BIT_DOWN		equ 5	; 32
@@ -353,7 +352,8 @@
 339+  0000              KEYZ       equ $FE02
 340+  0000              KEYCAPS    equ $FE01
 # file closed: src/hardware.inc
- 13   0000
+ 12   0000
+ 13   0000                      output   main.bin
  14   0000                      org     $8000
  15   8000
  16   8000              main:
@@ -363,297 +363,393 @@
  20   8005 ED 91 14 00          nextreg GLOBAL_TRANSPARENCY_NR_14,0             ; black
  21   8009 ED 91 4B 00          nextreg SPRITE_TRANSPARENCY_I_NR_4B,0           ; black
  22   800D ED 91 4A 00          nextreg TRANSPARENCY_FALLBACK_COL_NR_4A,$0      ; black
- 23   8011 ED 91 15 10          nextreg SPRITE_CONTROL_NR_15,%000'100'00        ; Layer order
- 24   8015 ED 91 70 00          nextreg LAYER2_CONTROL_NR_70,%00000000          ; 256x192
- 25   8019 ED 91 69 80          nextreg DISPLAY_CONTROL_NR_69,%10000000         ; bit 7 enable L2
+ 23   8011 ED 91 15 0B          nextreg SPRITE_CONTROL_NR_15,%00001011          ; Layer order
+ 24   8015 ED 91 70 10  	nextreg LAYER2_CONTROL_NR_70,%000'1'0000        ; 320x256 L2
+ 25   8019 ED 91 68 80          nextreg ULA_CONTROL_NR_68, %10000000            ; turn off ULA
  26   801D
- 27   801D                      ; we will use a simple map to draw L2 tiles to screen
- 28   801D                      ; we will do this by having the source data in the same
- 29   801D                      ; slot location as L2 writes
- 30   801D
- 31   801D AF                   xor     a
- 32   801E D3 FE                out     ($fe), a                        ; black border
- 33   8020
- 34   8020 DD 21 E8 81          ld      ix, testmap                     ; point to test map data
- 35   8024 FD 21 18 20          ld      iy, (32*256)+24                 ; width = 32, height = 24
- 36   8028
- 37   8028 CD 5C 81             call    draw_map                        ; draw the map
- 38   802B
- 39   802B 18 FE                jr   $                                  ; repeat loop
- 40   802D
- 41   802D              ;------------------------------------------------------------------------------
- 42   802D              ; Stack reservation
- 43   802D              STACK_SIZE      equ     100
- 44   802D
- 45   802D              stack_bottom:
- 46   802D 00 00 00...          defs    STACK_SIZE * 2
- 47   80F5              stack_top:
- 48   80F5 00 00                defw    0
- 49   80F7
- 50   80F7              ;------------------------------------------------------------------------------
- 51   80F7              ; includes
- 52   80F7
- 53   80F7                      include "utils.asm"
+ 27   801D ED 91 12 09          nextreg LAYER2_RAM_BANK_NR_12,9                 ; layer2 rams   16kb banks so 9*2 = BANKS 18
+ 28   8021 ED 91 69 80  	nextreg DISPLAY_CONTROL_NR_69,%10000000
+ 29   8025
+ 30   8025 CD E6 81             call    set_clipping                            ; clip L2 to 320x256 and ULA to 0x0
+ 31   8028
+ 32   8028 ED 91 43 10          nextreg PALETTE_CONTROL_NR_43,%00010000		; set L2 palette
+ 33   802C 3E C8                ld      a, 200                                   ; lower value will use more colours form the palette
+ 34   802E CD 07 82             call    gen_palette                             ; generate palette
+ 35   8031
+ 36   8031 AF                   xor     a
+ 37   8032 D3 FE                out     ($fe), a                                ; black border
+ 38   8034
+ 39   8034
+ 40   8034              main_loop:
+ 41   8034
+ 42   8034 CD 1A 81             call    Vsync                                   ; wait for vsync
+ 43   8037 CD 43 82             call    pal_cycle                               ; cycle colours
+ 44   803A
+ 45   803A 18 F8                jr      main_loop                               ; repeat loop
+ 46   803C
+ 47   803C              ;------------------------------------------------------------------------------
+ 48   803C              ; Stack reservation
+ 49   803C              STACK_SIZE      equ     100
+ 50   803C
+ 51   803C              stack_bottom:
+ 52   803C 00 00 00...          defs    STACK_SIZE * 2
+ 53   8104              stack_top:
+ 54   8104 00 00                defw    0
+ 55   8106
+ 56   8106              ;------------------------------------------------------------------------------
+ 57   8106              ; includes
+ 58   8106
+ 59   8106                      include "utils.asm"
 # file opened: src/utils.asm
-  1+  80F7
-  2+  80F7              ;------------------------------------------------------------------------------
-  3+  80F7              ; Utils
-  4+  80F7
-  5+  80F7              getRegister:
-  6+  80F7
-  7+  80F7              ; IN A > Register to read
-  8+  80F7              ; OUT A < Value of Register
-  9+  80F7
- 10+  80F7 C5               push    bc                                  ; save BC
- 11+  80F8 01 3B 24         ld      bc, TBBLUE_REGISTER_SELECT_P_243B
- 12+  80FB ED 79            out     (c), a
- 13+  80FD 04               inc     b
- 14+  80FE ED 78            in      a, (c)
- 15+  8100 C1               pop     bc
- 16+  8101 C9               ret
- 17+  8102
- 18+  8102
- 19+  8102              ;----------------------------------------------------------------------------
- 20+  8102              ;
- 21+  8102              ; Jump index
- 22+  8102              ;
- 23+  8102              ; In:
- 24+  8102              ;	A = Pointer index
- 25+  8102              ;    (SP) = Pointer to jump addresses list
- 26+  8102              ;
- 27+  8102              ;----------------------------------------------------------------------------
- 28+  8102
- 29+  8102              JumpIndex:
- 30+  8102 E1           		    pop	    hl				    ; Pointer to list
- 31+  8103
- 32+  8103 87                       add     a,  a
- 33+  8104 ED 31                    add     hl, a
- 34+  8106 5E           		    ld	    e, (hl)
- 35+  8107 23           		    inc	    hl
- 36+  8108 56           		    ld	    d, (hl)			    ; DE = Address to jump
- 37+  8109 EB           		    ex	    de,	hl
- 38+  810A E9           		    jp	    (hl)
- 39+  810B
- 40+  810B
- 41+  810B              ; Vsync wait
- 42+  810B
- 43+  810B              Vsync:
- 44+  810B 21 01 00                 ld      hl, 1
- 45+  810E              .readline:
- 46+  810E 3E 1F        			ld 		a,VIDEO_LINE_LSB_NR_1F
- 47+  8110 01 3B 24     			ld 		bc,TBBLUE_REGISTER_SELECT_P_243B
- 48+  8113 ED 79        			out 	(c),a
- 49+  8115 04           			inc 	b
- 50+  8116 ED 78        			in 		a,(c)
- 51+  8118 FE C0        			cp 		192				; line to wait for
- 52+  811A 20 F2        			jr 		nz,.readline
- 53+  811C 2B           			dec 	hl
- 54+  811D 7C           			ld 		a,h
- 55+  811E B5           			or 		l
- 56+  811F 20 ED        			jr 		nz,.readline
- 57+  8121 C9                       ret
+  1+  8106
+  2+  8106              ;------------------------------------------------------------------------------
+  3+  8106              ; Utils
+  4+  8106
+  5+  8106              getRegister:
+  6+  8106
+  7+  8106              ; IN A > Register to read
+  8+  8106              ; OUT A < Value of Register
+  9+  8106
+ 10+  8106 C5               push    bc                                  ; save BC
+ 11+  8107 01 3B 24         ld      bc, TBBLUE_REGISTER_SELECT_P_243B
+ 12+  810A ED 79            out     (c), a
+ 13+  810C 04               inc     b
+ 14+  810D ED 78            in      a, (c)
+ 15+  810F C1               pop     bc
+ 16+  8110 C9               ret
+ 17+  8111
+ 18+  8111
+ 19+  8111              ;----------------------------------------------------------------------------
+ 20+  8111              ;
+ 21+  8111              ; Jump index
+ 22+  8111              ;
+ 23+  8111              ; In:
+ 24+  8111              ;	A = Pointer index
+ 25+  8111              ;    (SP) = Pointer to jump addresses list
+ 26+  8111              ;
+ 27+  8111              ;----------------------------------------------------------------------------
+ 28+  8111
+ 29+  8111              JumpIndex:
+ 30+  8111 E1           		    pop	    hl				    ; Pointer to list
+ 31+  8112
+ 32+  8112 87                       add     a,  a
+ 33+  8113 ED 31                    add     hl, a
+ 34+  8115 5E           		    ld	    e, (hl)
+ 35+  8116 23           		    inc	    hl
+ 36+  8117 56           		    ld	    d, (hl)			    ; DE = Address to jump
+ 37+  8118 EB           		    ex	    de,	hl
+ 38+  8119 E9           		    jp	    (hl)
+ 39+  811A
+ 40+  811A
+ 41+  811A              ; Vsync wait
+ 42+  811A
+ 43+  811A              Vsync:
+ 44+  811A 21 01 00                 ld      hl, 1
+ 45+  811D              .readline:
+ 46+  811D 3E 1F        			ld 		a,VIDEO_LINE_LSB_NR_1F
+ 47+  811F 01 3B 24     			ld 		bc,TBBLUE_REGISTER_SELECT_P_243B
+ 48+  8122 ED 79        			out 	(c),a
+ 49+  8124 04           			inc 	b
+ 50+  8125 ED 78        			in 		a,(c)
+ 51+  8127 FE C0        			cp 		192				; line to wait for
+ 52+  8129 20 F2        			jr 		nz,.readline
+ 53+  812B 2B           			dec 	hl
+ 54+  812C 7C           			ld 		a,h
+ 55+  812D B5           			or 		l
+ 56+  812E 20 ED        			jr 		nz,.readline
+ 57+  8130 C9                       ret
 # file closed: src/utils.asm
- 54   8122                      include "layer2.asm"
+ 60   8131                      include "layer2.asm"
 # file opened: src/layer2.asm
-  1+  8122              clsL2:
-  2+  8122              	; Clears L2 252x192 with A as colour
-  3+  8122              	; IN A > colour
-  4+  8122              	; USES : hl, de, bc, a
-  5+  8122
-  6+  8122 32 3D 81     	ld          (.colour+1), a
-  7+  8125 3E 12        	ld          a, $12
-  8+  8127 CD F7 80     	call        getRegister
-  9+  812A 87           	add         a, a                ; A = start of L2 ram
- 10+  812B 06 03        	ld          b, 3                ; 3 blocks to do
- 11+  812D              .L2loop:
- 12+  812D C5           	push        bc
- 13+  812E ED 92 50     	nextreg     MMU0_0000_NR_50, a  ; set 0 - $1fff
- 14+  8131 3C           	inc         a
- 15+  8132 ED 92 51     	nextreg     MMU1_2000_NR_51, a  ; set 0 - $1fff
- 16+  8135 3C           	inc         a
- 17+  8136
- 18+  8136 21 00 00     	ld          hl, 0
- 19+  8139 11 01 00     	ld          de, 1
- 20+  813C              .colour:
- 21+  813C 36 14        	ld          (hl), 20            ; smc from above
- 22+  813E 01 FF 3F     	ld          bc, $3fff
- 23+  8141 ED B0        	ldir
- 24+  8143 C1           	pop         bc
- 25+  8144 10 E7        	djnz        .L2loop
- 26+  8146
- 27+  8146              	; restore ROMS
- 28+  8146
- 29+  8146 ED 91 50 FF  	nextreg     MMU0_0000_NR_50, $ff
- 30+  814A ED 91 51 FF  	nextreg     MMU1_2000_NR_51, $ff
- 31+  814E
- 32+  814E              	; clear ULA
- 33+  814E 21 00 40     	ld          hl, 16384
- 34+  8151 11 01 40     	ld          de, 16385
- 35+  8154 01 00 1B     	ld          bc, 6912
- 36+  8157 36 00        	ld          (hl), 0
- 37+  8159 ED B0        	ldir
- 38+  815B
- 39+  815B C9           	ret
- 40+  815C
- 41+  815C
- 42+  815C              draw_map:
- 43+  815C
- 44+  815C              	; draws nn tiles from x,y to fille the screen
- 45+  815C              	; IN IX > map to draw
- 46+  815C              	; IN IY > width x height
- 47+  815C
- 48+  815C 3E 00        	ld          a, 0            ; black
- 49+  815E CD 22 81     	call        clsL2           ; clear L2
- 50+  8161
- 51+  8161 FD 54        	ld 			d, iyh 			; width
- 52+  8163 FD 5D        	ld 			e, iyl			; height
- 53+  8165 ED 30        	mul 		d, e
- 54+  8167 42           	ld 			b, d
- 55+  8168 4B           	ld 			c, e 			; number of tiles to draw
- 56+  8169
- 57+  8169 11 00 00     	ld          de,$00'00           ; d = x  e = y
- 58+  816C
- 59+  816C
- 60+  816C              .maploop:       ; lets draw 768 tiles
- 61+  816C
- 62+  816C C5           	push        bc              ; save tile counter
- 63+  816D DD 66 00     	ld          h, (ix)         ; get the tile at ix
- 64+  8170 3E 1A        	ld          a, 26           ; bank
- 65+  8172
- 66+  8172 CD 87 81     	call        dotile_8x8
- 67+  8175
- 68+  8175 DD 23        	inc         ix              ; move to next tile
- 69+  8177 14           	inc         d               ; X + 1
- 70+  8178 7A           	ld          a, d
- 71+  8179 FD BC        	cp          iyh              ; is X = width?
- 72+  817B
- 73+  817B 20 03        	jr          nz, .no_inc_e   ; no, then skip to .no_inc_e
- 74+  817D
- 75+  817D 1C           	inc         e               ; X=32 so make Y+1
- 76+  817E 16 00        	ld          d, 0            ; X = 0
- 77+  8180
- 78+  8180              .no_inc_e:
- 79+  8180
- 80+  8180 C1           	pop         bc              ; bring back tile counter
- 81+  8181 0B           	dec         bc
- 82+  8182 78           	ld          a, b
- 83+  8183 B1           	or          c
- 84+  8184 20 E6        	jr          nz,.maploop
- 85+  8186
- 86+  8186 C9           	ret
- 87+  8187
- 88+  8187
- 89+  8187              dotile_8x8:
- 90+  8187
- 91+  8187              	; a > bank
- 92+  8187              	; h > tile
- 93+  8187              	; de > xy
- 94+  8187
- 95+  8187
- 96+  8187              	; Draws a tile h from bank a. de = x y .Total tile size can be 16kb
- 97+  8187              	; required bank is auto paged into $0000-$3FFF
- 98+  8187              	; 256x192 L2 8x8 256 colour tile
- 99+  8187
-100+  8187 D5           	push        de                                                              ; save XY
-101+  8188 CB 7C        	bit         7,h			; 8 t 		                                        ; is the tile >=128?
-102+  818A 28 01        	jr          z,.noinc	 	; 12 / 7t 	20                                  ; no then jump forward
-103+  818C 3C           	inc         a 			; 4 		24                                      ; yes increase base bank to 8192-16384
-104+  818D
-105+  818D              .noinc:
-106+  818D
-107+  818D ED 92 50     	nextreg     MMU0_0000_NR_50, a                                              ; set 0 - $1fff ,a 		; set correct bank
-108+  8190
-109+  8190              	; Grab tile, x, y
-110+  8190 7C           	ld          a,h			        ; tile
-111+  8191 6A           	ld          l,d			        ; x
-112+  8192 63           	ld          h,e			        ; y
-113+  8193
-114+  8193 E6 7F        	and         127                 ; we need to wrap over 127 as we have adjusted the base bank
-115+  8195
-116+  8195              	; modified from the original dotile8x8 by Michael "Flash" Ware
-117+  8195
-118+  8195 16 40        	ld          d,64                ; find offset in data, each tile is 8x8 = 64, so multiply 64*tilenumber
-119+  8197 5F           	ld          e,a					; 11
-120+  8198 ED 30        	mul         d,e                 ; de holds offset
-121+  819A
-122+  819A 3E 00        	ld          a,%00000000			; tiles at $0
-123+  819C B2           	or          d		 			; or MSB of offset
-124+  819D EB           	ex          de,hl				; swap offset with xy
-125+  819E 67           	ld          h,a					;
-126+  819F 7B           	ld          a,e
-127+  81A0 07           	rlca
-128+  81A1 07           	rlca
-129+  81A2 07           	rlca
-130+  81A3 5F           	ld          e,a					; 4+4+4+4+4 = 20	; mul x,8
-131+  81A4 7A           	ld          a,d
-132+  81A5 07           	rlca
-133+  81A6 07           	rlca
-134+  81A7 07           	rlca
-135+  81A8 57           	ld          d,a					; 4+4+4+4+4 = 20	; mul y,8
-136+  81A9 E6 C0        	and         192
-137+  81AB F6 03        	or          3						; or 3 to keep layer on				; 8
-138+  81AD 01 3B 12     	ld          bc,LAYER2_ACCESS_P_123B
-139+  81B0 ED 79        	out         (c),a      			; 21			; select bank
-140+  81B2
-141+  81B2 7A           	ld          a,d
-142+  81B3 E6 3F        	and         63
-143+  81B5 57           	ld          d,a					; clear top bits of y (dest) (4+4+4 = 12)
-144+  81B6              	; T96 here
-145+  81B6 3E 08        	ld          a,8					; 7
-146+  81B8              .plotTilesLoop2:
-147+  81B8 D5           	push        de					; 11
-148+  81B9 ED A0        	ldi
-149+  81BB ED A0        	ldi
-150+  81BD ED A0        	ldi
-151+  81BF ED A0        	ldi
-152+  81C1 ED A0        	ldi
-153+  81C3 ED A0        	ldi
-154+  81C5 ED A0        	ldi
-155+  81C7 ED A0        	ldi		    ; 8 * 16 = 128
-156+  81C9
-157+  81C9 D1           	pop         de					; 11
-158+  81CA 14           	inc         d					; 4 add 256 for next line down
-159+  81CB 3D           	dec         a					; 4
-160+  81CC 20 EA        	jr          nz,.plotTilesLoop2			; 12/7
-161+  81CE
-162+  81CE
-163+  81CE 3E 02        	ld          a,2                 ; writes off, L2 enable
-164+  81D0 01 3B 12     	ld          bc,LAYER2_ACCESS_P_123B
-165+  81D3 ED 79        	out         (c),a               ; 21			; select bank
-166+  81D5 D1           	pop         de                  ; restore xy
-167+  81D6
-168+  81D6 C9           	ret
-169+  81D7
-170+  81D7
-171+  81D7
-172+  81D7              hide_ula:
-173+  81D7
-174+  81D7              	; clips ULA to 0,0
-175+  81D7
-176+  81D7 ED 91 1A 00  	nextreg     CLIP_ULA_LORES_NR_1A, 0
-177+  81DB ED 91 1A 00  	nextreg     CLIP_ULA_LORES_NR_1A, 0
-178+  81DF ED 91 1A 00  	nextreg     CLIP_ULA_LORES_NR_1A, 0
-179+  81E3 ED 91 1A 00  	nextreg     CLIP_ULA_LORES_NR_1A, 0
-180+  81E7 C9           	ret
+  1+  8131              clsL2:
+  2+  8131              	; Clears L2 320x256 with A as colour
+  3+  8131              	; IN A > colour
+  4+  8131              	; USES : hl, de, bc, a
+  5+  8131
+  6+  8131 32 4C 81     		ld          (.colour+1), a
+  7+  8134 3E 12        		ld          a, $12 				; $12 is L2 RAM start bank register
+  8+  8136 CD 06 81     		call        getRegister 		; get L2 ram bank in a
+  9+  8139 87           		add         a, a                ; A = start of L2 ram, we need to *2
+ 10+  813A 06 05        		ld          b, 5                ; 3 blocks to do
+ 11+  813C
+ 12+  813C              .L2loop:
+ 13+  813C C5           		push        bc 					; save loop counter
+ 14+  813D
+ 15+  813D ED 92 50     		nextreg     MMU0_0000_NR_50, a  ; set 0 - $1fff
+ 16+  8140 3C           		inc         a
+ 17+  8141 ED 92 51     		nextreg     MMU1_2000_NR_51, a  ; set 0 - $1fff
+ 18+  8144 3C           		inc         a
+ 19+  8145
+ 20+  8145 21 00 00     		ld          hl, 0 				; start at address 0
+ 21+  8148 11 01 00     		ld          de, 1
+ 22+  814B              .colour:
+ 23+  814B 36 14        		ld          (hl), 20            ; smc colour from above
+ 24+  814D 01 FF 3F     		ld          bc, $3fff			; bytes to clear
+ 25+  8150 ED B0        		ldir
+ 26+  8152 C1           		pop         bc 					; bring back loop counter
+ 27+  8153 10 E7        		djnz        .L2loop 			; repeat until b = 0
+ 28+  8155
+ 29+  8155              		; restore ROMS
+ 30+  8155
+ 31+  8155 ED 91 50 FF  		nextreg     MMU0_0000_NR_50, $ff
+ 32+  8159 ED 91 51 FF  		nextreg     MMU1_2000_NR_51, $ff
+ 33+  815D
+ 34+  815D              		; clear ULA
+ 35+  815D 21 00 40     		ld          hl, 16384
+ 36+  8160 11 01 40     		ld          de, 16385
+ 37+  8163 01 00 1B     		ld          bc, 6912
+ 38+  8166 36 00        		ld          (hl), 0
+ 39+  8168 ED B0        		ldir
+ 40+  816A
+ 41+  816A C9           		ret
+ 42+  816B
+ 43+  816B
+ 44+  816B              draw_map:
+ 45+  816B
+ 46+  816B              	; draws nn tiles from x,y to fill the screen
+ 47+  816B              	; IN IX > map to draw
+ 48+  816B              	; IN IY > width height
+ 49+  816B
+ 50+  816B 3E 00        		ld          a, 0            ; black
+ 51+  816D CD 31 81     		call        clsL2           ; clear L2
+ 52+  8170
+ 53+  8170 FD 54        		ld 			d, iyh 			; width
+ 54+  8172 FD 5D        		ld 			e, iyl			; height
+ 55+  8174 ED 30        		mul 		d, e
+ 56+  8176 42           		ld 			b, d
+ 57+  8177 4B           		ld 			c, e 			; number of tiles to draw
+ 58+  8178
+ 59+  8178 11 00 00     		ld          de,$00'00           ; d = x  e = y
+ 60+  817B
+ 61+  817B
+ 62+  817B              .maploop:       ; lets draw 768 tiles
+ 63+  817B
+ 64+  817B C5           		push        bc              ; save tile counter
+ 65+  817C DD 66 00     		ld          h, (ix)         ; get the tile at ix
+ 66+  817F 3E 1A        		ld          a, 26           ; bank
+ 67+  8181
+ 68+  8181 CD 96 81     		call        dotile_8x8
+ 69+  8184
+ 70+  8184 DD 23        		inc         ix              ; move to next tile
+ 71+  8186 14           		inc         d               ; X + 1
+ 72+  8187 7A           		ld          a, d
+ 73+  8188 FD BC        		cp          iyh              ; is X = width?
+ 74+  818A
+ 75+  818A 20 03        		jr          nz, .no_inc_e   ; no, then skip to .no_inc_e
+ 76+  818C
+ 77+  818C 1C           		inc         e               ; X=32 so make Y+1
+ 78+  818D 16 00        		ld          d, 0            ; X = 0
+ 79+  818F
+ 80+  818F              .no_inc_e:
+ 81+  818F
+ 82+  818F C1           		pop         bc              ; bring back tile counter
+ 83+  8190 0B           		dec         bc
+ 84+  8191 78           		ld          a, b
+ 85+  8192 B1           		or          c
+ 86+  8193 20 E6        		jr          nz,.maploop
+ 87+  8195
+ 88+  8195 C9           		ret
+ 89+  8196
+ 90+  8196
+ 91+  8196              dotile_8x8:
+ 92+  8196
+ 93+  8196              	; a > bank
+ 94+  8196              	; h > tile
+ 95+  8196              	; de > xy
+ 96+  8196
+ 97+  8196
+ 98+  8196              	; Draws a tile h from bank a. de = x y .Total tile size can be 16kb
+ 99+  8196              	; required bank is auto paged into $0000-$3FFF
+100+  8196              	; 256x192 L2 8x8 256 colour tile
+101+  8196
+102+  8196 D5           		push        de                                                              ; save XY
+103+  8197 CB 7C        		bit         7,h			; 8 t 		                                        ; is the tile >=128?
+104+  8199 28 01        		jr          z,.noinc	 	; 12 / 7t 	20                                  ; no then jump forward
+105+  819B 3C           		inc         a 			; 4 		24                                      ; yes increase base bank to 8192-16384
+106+  819C
+107+  819C              .noinc:
+108+  819C
+109+  819C ED 92 50     		nextreg     MMU0_0000_NR_50, a                                              ; set 0 - $1fff ,a 		; set correct bank
+110+  819F
+111+  819F              		; Grab tile, x, y
+112+  819F 7C           		ld          a,h			        ; tile
+113+  81A0 6A           		ld          l,d			        ; x
+114+  81A1 63           		ld          h,e			        ; y
+115+  81A2
+116+  81A2 E6 7F        		and         127                 ; we need to wrap over 127 as we have adjusted the base bank
+117+  81A4
+118+  81A4              		; modified from the original dotile8x8 by Michael "Flash" Ware
+119+  81A4
+120+  81A4 16 40        		ld          d,64                ; find offset in data, each tile is 8x8 = 64, so multiply 64*tilenumber
+121+  81A6 5F           		ld          e,a					; 11
+122+  81A7 ED 30        		mul         d,e                 ; de holds offset
+123+  81A9
+124+  81A9 3E 00        		ld          a,%00000000			; tiles at $0
+125+  81AB B2           		or          d		 			; or MSB of offset
+126+  81AC EB           		ex          de,hl				; swap offset with xy
+127+  81AD 67           		ld          h,a					;
+128+  81AE 7B           		ld          a,e
+129+  81AF 07           		rlca
+130+  81B0 07           		rlca
+131+  81B1 07           		rlca
+132+  81B2 5F           		ld          e,a					; 4+4+4+4+4 = 20	; mul x,8
+133+  81B3 7A           		ld          a,d
+134+  81B4 07           		rlca
+135+  81B5 07           		rlca
+136+  81B6 07           		rlca
+137+  81B7 57           		ld          d,a					; 4+4+4+4+4 = 20	; mul y,8
+138+  81B8 E6 C0        		and         192
+139+  81BA F6 03        		or          3						; or 3 to keep layer on				; 8
+140+  81BC 01 3B 12     		ld          bc,LAYER2_ACCESS_P_123B
+141+  81BF ED 79        		out         (c),a      			; 21			; select bank
+142+  81C1
+143+  81C1 7A           		ld          a,d
+144+  81C2 E6 3F        		and         63
+145+  81C4 57           		ld          d,a					; clear top bits of y (dest) (4+4+4 = 12)
+146+  81C5              		; T96 here
+147+  81C5 3E 08        		ld          a,8					; 7
+148+  81C7              .plotTilesLoop2:
+149+  81C7 D5           		push        de					; 11
+150+  81C8 ED A0        		ldi
+151+  81CA ED A0        		ldi
+152+  81CC ED A0        		ldi
+153+  81CE ED A0        		ldi
+154+  81D0 ED A0        		ldi
+155+  81D2 ED A0        		ldi
+156+  81D4 ED A0        		ldi
+157+  81D6 ED A0        		ldi		    ; 8 * 16 = 128
+158+  81D8
+159+  81D8 D1           		pop         de					; 11
+160+  81D9 14           		inc         d					; 4 add 256 for next line down
+161+  81DA 3D           		dec         a					; 4
+162+  81DB 20 EA        		jr          nz,.plotTilesLoop2			; 12/7
+163+  81DD
+164+  81DD
+165+  81DD 3E 02        		ld          a,2                 ; writes off, L2 enable
+166+  81DF 01 3B 12     		ld          bc,LAYER2_ACCESS_P_123B
+167+  81E2 ED 79        		out         (c),a               ; 21			; select bank
+168+  81E4 D1           		pop         de                  ; restore xy
+169+  81E5
+170+  81E5 C9           		ret
+171+  81E6
+172+  81E6
+173+  81E6
+174+  81E6              set_clipping:
+175+  81E6
+176+  81E6              	; clips ULA to 0,0
+177+  81E6
+178+  81E6 ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+179+  81EA ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+180+  81EE ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+181+  81F2 ED 91 1A 00  		nextreg     CLIP_ULA_LORES_NR_1A, 0
+182+  81F6
+183+  81F6
+184+  81F6 ED 91 18 00  		nextreg		CLIP_LAYER2_NR_18, 0
+185+  81FA ED 91 18 FF  		nextreg		CLIP_LAYER2_NR_18, 255
+186+  81FE ED 91 18 00  		nextreg		CLIP_LAYER2_NR_18, 0
+187+  8202 ED 91 18 FF  		nextreg		CLIP_LAYER2_NR_18, 255
+188+  8206
+189+  8206
+190+  8206 C9           		ret
+191+  8207
+192+  8207
+193+  8207
+194+  8207              gen_palette:
+195+  8207
+196+  8207              		; A > offset
+197+  8207
+198+  8207
+199+  8207 ED 91 52 1C  		nextreg 		$52,28 								; bring in palette to $4000
+200+  820B 21 00 40     		ld      		hl, $4000							; point hl to start of palette
+201+  820E ED 31        		add     		hl, a								; hl = @palette+offset
+202+  8210 11 70 82     		ld      		de, palette_buffer					; point de to palette
+203+  8213 01 00 02     		ld      		bc, 512								;
+204+  8216              .uploop1:
+205+  8216 ED A0        		ldi
+206+  8218 23           		inc 			hl
+207+  8219 78           		ld      		a, b
+208+  821A B1           		or      		c
+209+  821B 20 F9        		jr      		nz,.uploop1
+210+  821D 21 70 82     		ld      		hl,palette_buffer
+211+  8220 06 00        		ld      		b,0
+212+  8222 ED 91 43 11  		nextreg 		PALETTE_CONTROL_NR_43, %00010001
+213+  8226 ED 91 40 00  		nextreg 		$40,0
+214+  822A              .uploop:
+215+  822A 7E           		ld      		a,(hl)
+216+  822B ED 92 44     		nextreg 		$44, a
+217+  822E 23           		inc     		hl
+218+  822F ED 91 44 00  		nextreg 		$44, 0
+219+  8233 23           		inc     		hl
+220+  8234 10 F4        		djnz    		.uploop
+221+  8236 ED 91 44 00  		nextreg			$44,0
+222+  823A ED 91 44 00  		nextreg			$44,0
+223+  823E
+224+  823E ED 91 52 02  		nextreg 		$52,2
+225+  8242 C9           		ret
+226+  8243
+227+  8243
+228+  8243              pal_cycle:
+229+  8243
+230+  8243              	; cycles the colours from hl
+231+  8243
+232+  8243 21 70 82     		ld			hl,palette_buffer
+233+  8246 06 1F        		ld 			b,31					; number of colours to cycle?
+234+  8248
+235+  8248 3E 00        		ld 			a,0						; offset into colour index
+236+  824A
+237+  824A              .loadpal:
+238+  824A
+239+  824A 11 70 82     		ld 			de,palette_buffer				; set de to palette
+240+  824D
+241+  824D 1A           		ld 			a,(de)					; get the first colour
+242+  824E F5           		push 		af 						; save the value
+243+  824F 21 71 82     		ld 			hl,palette_buffer+1			; copy palette+1 back 1 space
+244+  8252 11 70 82     		ld 			de,palette_buffer
+245+  8255 01 FE 00     		ld 			bc,254					; do for 255 colours
+246+  8258 ED B0        		ldir 								;
+247+  825A F1           		pop 		af 						; bring back fist colour
+248+  825B 12           		ld 			(de),a 					; place at end
+249+  825C 21 70 82     		ld 			hl,palette_buffer				; point hl to updated palette
+250+  825F
+251+  825F 06 FF        		ld 			b,255					; 255 loops
+252+  8261 AF           		xor 		a						; flatten a
+253+  8262              .palloop:
+254+  8262
+255+  8262 ED 92 40     		nextreg 	PALETTE_INDEX_NR_40,a	; move palette index to a
+256+  8265 57           		ld 			d,a 					; save a in d
+257+  8266 7E           		ld 			a,(hl)					; load first value, send to NextReg
+258+  8267 ED 92 41     		nextreg 	$41,a 					; set the colour
+259+  826A 23           		inc 		hl 						; increase palette location
+260+  826B 7A           		ld 			a,d 					; bring back palette index
+261+  826C 3C           		inc 		a 						; incread palette index
+262+  826D 10 F3        		djnz 		.palloop				; loop until all colours done
+263+  826F C9           		ret
 # file closed: src/layer2.asm
- 55   81E8
- 56   81E8              testmap:
- 57   81E8                      incbin "../assets/testmap.nxm"
- 58   84E8
- 59   84E8
- 60   84E8              ;------------------------------------------------------------------------------
- 61   84E8              ; Memory banks
- 62   84E8
- 63   84E8                      mmu 7   n, 26
- 64   84E8                      org     $e000
- 65   E000                      incbin  "../assets/testmap.nxt"                 ; L2 software tiles
- 66   E500
- 67   E500
- 68   E500              ;------------------------------------------------------------------------------
- 69   E500              ; Output configuration
- 70   E500                      SAVENEX OPEN "L2_on_SLOT01.nex", main, stack_top
- 71   E500                      SAVENEX CORE 3,0,0
- 72   E500                      SAVENEX CFG 7,0,0,0
- 73   E500                      SAVENEX AUTO
- 74   E500                      SAVENEX CLOSE
+ 61   8270
+ 62   8270                      outend
+ 63   8270
+ 64   8270              ;------------------------------------------------------------------------------
+ 65   8270              ; Data section
+ 66   8270
+ 67   8270              palette_buffer:                                         ; used to cache palette for cycling
+ 68   8270 00 00 00...          defs    512,0
+ 69   8470
+ 70   8470              ;------------------------------------------------------------------------------
+ 71   8470              ; Memory banks
+ 72   8470
+ 73   8470                      mmu 7   n, 18                                   ; load to bank 18 which is the start of L2 memory
+ 74   8470                      org     $e000
+ 75   E000                      incbin  "../assets/output320.bin"               ; precalculated image
+ 76   E000                      mmu 7   n, 28
+ 77   E000                      org     $e000
+ 78   E000                      incbin  "../assets/rainbow.pal"                 ; palette for cycling
+ 79   E200
+ 80   E200
+ 81   E200              ;------------------------------------------------------------------------------
+ 82   E200              ; Output configuration
+ 83   E200                      SAVENEX OPEN "320Cycle.nex", main, stack_top
+ 84   E200                      SAVENEX CORE 3,0,0
+ 85   E200                      SAVENEX CFG 7,0,0,0
+ 86   E200                      SAVENEX AUTO
+ 87   E200                      SAVENEX CLOSE
 # file closed: src/main.asm

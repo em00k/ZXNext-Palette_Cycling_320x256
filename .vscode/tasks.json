@@ -10,9 +10,9 @@
                 "--zxnext=cspect",
                 "--msg=war",
                 "--fullpath",
-                "--sym=L2_on_SLOT01.sym",
-                "--sld=L2_on_SLOT01.sld",
-                "--lst=L2_on_SLOT01.lst"
+                "--sym=320Cycle.sym",
+                "--sld=320Cycle.sld",
+                "--lst=320Cycle.lst"
             ],
             "problemMatcher": {
                 "fileLocation": [
@@ -32,7 +32,7 @@
         {
             "label": "Launch CSpect",
             "type": "shell",
-            "command": "Z:/zxenv/emulator/cspect -w3 -brk -zxnext -nextrom -analytics -map=Z:/zxenv/L2_on_SLOT01/L2_on_SLOT01.map Z:/zxenv/L2_on_SLOT01/L2_on_SLOT01.NEX",
+            "command": "Z:/zxenv/emulator/cspect -w3 -brk -zxnext -nextrom -analytics -map=Z:/zxenv/320Cycle/320Cycle.map Z:/zxenv/320Cycle/320Cycle.NEX",
             "dependsOrder": "sequence",
             "dependsOn": [
                 "Build",
