@@ -1,0 +1,47 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "Z:/zxenv/emulator/sjasmplus",
+            "args": [
+                "src/main.asm",
+                "--zxnext=cspect",
+                "--msg=war",
+                "--fullpath",
+                "--sym=L2_on_SLOT01.sym",
+                "--sld=L2_on_SLOT01.sld",
+                "--lst=L2_on_SLOT01.lst"
+            ],
+            "problemMatcher": {
+                "fileLocation": [
+                    "relative",
+                    "${workspaceRoot}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*)\\((\\d+)\\):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "severity": 3,
+                    "message": 4
+                }
+            },
+            "group": "build"
+        },
+        {
+            "label": "Launch CSpect",
+            "type": "shell",
+            "command": "Z:/zxenv/emulator/cspect -w3 -brk -zxnext -nextrom -analytics -map=Z:/zxenv/L2_on_SLOT01/L2_on_SLOT01.map Z:/zxenv/L2_on_SLOT01/L2_on_SLOT01.NEX",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Build",
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
