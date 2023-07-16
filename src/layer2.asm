@@ -43,7 +43,7 @@ draw_map:
 
 	; draws nn tiles from x,y to fille the screen 
 	; IN IX > map to draw 
-	; IN IY > width x height 
+	; IN IY > width height 
 
 	ld          a, 0            ; black 
 	call        clsL2           ; clear L2 
