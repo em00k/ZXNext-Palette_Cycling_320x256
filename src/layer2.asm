@@ -41,7 +41,7 @@ clsL2:
 
 draw_map:
 
-	; draws nn tiles from x,y to fille the screen 
+	; draws nn tiles from x,y to fill the screen 
 	; IN IX > map to draw 
 	; IN IY > width height 
 
